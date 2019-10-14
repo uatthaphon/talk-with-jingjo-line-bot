@@ -1,6 +1,18 @@
 const functions = require('firebase-functions');
 const request = require('request-promise');
 
+/* Init Database */
+const admin = require("firebase-admin");
+let serviceAccount = require("./serviceAccountKey.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+  databaseURL: "https://talk-with-jingjo-line-bot.firebaseio.com"
+});
+
+let db = admin.firestore();
+/* End Init Database */
+
 const LINE_MESSAGING_API = 'https://api.line.me/v2/bot/message';
 const LINE_HEADER = {
   'Content-Type': 'application/json',
@@ -15,9 +27,18 @@ exports.lineBot = functions.https.onRequest((req, res) => {
   const text = req.body.events[0].message.text;
   const resumes = [`cv`, `resume`, `เรซูเม่`, `ซีวี`];
 
-  for (var i = resumes.length - 1; i >= 0; --i) {
+  for (let i = resumes.length - 1; i >= 0; --i) {
     if (text.indexOf(resumes[i]) !== -1) {
       replyResume(req.body);
+      return;
+    }
+  }
+
+  const hungries = [`หิว`, `อยากกิน`, `ชิม`];
+
+  for (let i = hungries.length - 1; i >= 0; --i) {
+    if (text.indexOf(hungries[i]) !== -1) {
+      replyHungry(req.body);
       return;
     }
   }
@@ -57,4 +78,46 @@ const replyResume = (bodyResponse) => {
     ]
     })
   });
+};
+
+const replyHungry = (bodyResponse) => {
+  const foodRef = db.collection('foods');
+  let foodArr = foodRef.get()
+    .then(snapshot => {
+      let arr = [];
+      snapshot.forEach(doc => {
+        arr.push(doc.data().name);
+      });
+
+      let replyText = `ไม่รู้สินะ ยังไม่หิวอ่ะ`;
+
+      if (arr !== undefined || arr.length > 0) {
+        let food = arr[Math.floor(Math.random() * arr.length)];
+        replyText = `ไปกิน ${food} กันดีกว่า อยากกินมากเลย`;
+      }
+
+      return request({
+        method: `POST`,
+        uri: `${LINE_MESSAGING_API}/reply`,
+        headers: LINE_HEADER,
+        body: JSON.stringify({
+          replyToken: bodyResponse.events[0].replyToken,
+          messages: [
+            {
+              type: `text`,
+              text: replyText
+            }
+        ]
+        })
+      });
+    })
+    .catch(err => {
+      console.log(err);
+      return null;
+    });
+};
+
+const randomProperty = (obj) => {
+    var keys = Object.keys(obj)
+    return obj[keys[ keys.length * Math.random() << 0]];
 };
